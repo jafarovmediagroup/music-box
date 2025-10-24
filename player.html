@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMQ Music Player</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --accent-color: #7161ef; }
+        body, html { margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #121212; color: #fff; overflow: hidden; }
+        .player-container { display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Siyahı Bölməsi */
+        .track-list { list-style: none; padding: 10px; margin: 0; overflow-y: auto; flex-grow: 1; }
+        .track-list li { display: flex; align-items: center; padding: 8px; border-radius: 4px; cursor: pointer; transition: background-color 0.2s; }
+        .track-list li:hover { background-color: #282828; }
+        .track-list li.playing { background-color: #3a3a3a; }
+        .track-list img { width: 40px; height: 40px; border-radius: 4px; margin-right: 12px; }
+        .track-list .track-info { flex-grow: 1; overflow: hidden; }
+        .track-list .title { font-weight: bold; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .track-list .artist { font-size: 12px; color: #b3b3b3; }
+        .track-list .duration { font-size: 13px; color: #b3b3b3; }
+
+        /* İdarəetmə Paneli (Aşağıda) */
+        .controls-panel { background-color: #181818; padding: 15px; display: flex; align-items: center; gap: 15px; flex-shrink: 0; border-top: 1px solid #282828;}
+        .controls-panel .cover { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; }
+        .controls-panel .main-controls { display: flex; align-items: center; gap: 20px; }
+        .controls-panel button { background: none; border: none; color: #fff; cursor: pointer; font-size: 18px; }
+        .controls-panel #play-pause-btn { font-size: 28px; }
+        .controls-panel .progress-info { flex-grow: 1; display: flex; flex-direction: column; gap: 5px; }
+        .controls-panel .progress-container { width: 100%; height: 4px; background: #535353; border-radius: 2px; cursor: pointer; }
+        .controls-panel .progress-bar { width: 0%; height: 100%; background: #fff; border-radius: 2px; }
+        .controls-panel .time-stamps { display: flex; justify-content: space-between; font-size: 11px; color: #b3b3b3; }
+        #volume-container { display: flex; align-items: center; gap: 8px; }
+        #volume-slider { width: 80px; }
+        
+        /* Scrollbar Stili */
+        .track-list::-webkit-scrollbar { width: 8px; }
+        .track-list::-webkit-scrollbar-track { background: #121212; }
+        .track-list::-webkit-scrollbar-thumb { background: #535353; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <ul id="track-list" class="track-list">
+            <!-- Musiqi siyahısı JavaScript ilə bura əlavə olunacaq -->
+        </ul>
+
+        <div class="controls-panel">
+            <img id="current-cover" class="cover" src="https://via.placeholder.com/50" alt="Cover"/>
+            <div class="progress-info">
+                <div class="progress-container" id="progress-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <div class="time-stamps">
+                    <span id="current-time">0:00</span>
+                    <span id="total-time">0:00</span>
+                </div>
+            </div>
+            <div class="main-controls">
+                <button id="prev-btn"><i class="fas fa-step-backward"></i></button>
+                <button id="play-pause-btn"><i class="fas fa-play"></i></button>
+                <button id="next-btn"><i class="fas fa-step-forward"></i></button>
+            </div>
+            <div id="volume-container">
+                <button id="volume-btn"><i class="fas fa-volume-up"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="audio-player"></audio>
+
+    <script>
+        // BU HİSSƏ GƏLƏCƏKDƏ ADMİN PANELDƏN YENİLƏNƏCƏK
+        // Test üçün bir neçə mahnı əlavə edirik
+        const tracks = [
+            {
+                category: "Test Janrı",
+                title: "Getmə, Kimsəsizəm",
+                description: "Test İfaçı",
+                image: "https://i.ibb.co/3sZpY7s/music-cover-1.png",
+                audioLink: "https://raw.githubusercontent.com/jafarovmediagroup/music-box/main/Getm%C9%99%2C%20kims%C9%99siz%C9%99m.mp3"
+            },
+            {
+                category: "Test Janrı 2",
+                title: "Meşə Səsləri",
+                description: "Təbiət",
+                image: "https://i.ibb.co/L5k6Y1G/music-cover-2.png",
+                audioLink: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+            }
+        ];
+
+        // Pleyer Məntiqi
+        const audioPlayer = document.getElementById('audio-player');
+        const trackList = document.getElementById('track-list');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const currentCover = document.getElementById('current-cover');
+        const progressBar = document.getElementById('progress-bar');
+        const progressContainer = document.getElementById('progress-container');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalTimeEl = document.getElementById('total-time');
+
+        let currentTrackIndex = 0;
+
+        function loadTrack(index) {
+            const track = tracks[index];
+            audioPlayer.src = track.audioLink;
+            currentCover.src = track.image || 'https://via.placeholder.com/50';
+            
+            // Bütün treklərdən "playing" klassını sil
+            document.querySelectorAll('#track-list li').forEach(li => li.classList.remove('playing'));
+            // Hazırkı trekə "playing" klassını əlavə et
+            const currentLi = document.getElementById(`track-${index}`);
+            if(currentLi) currentLi.classList.add('playing');
+            
+            currentTrackIndex = index;
+        }
+        
+        function playTrack() { audioPlayer.play(); }
+        function pauseTrack() { audioPlayer.pause(); }
+        function nextTrack() { loadTrack((currentTrackIndex + 1) % tracks.length); playTrack(); }
+        function prevTrack() { loadTrack((currentTrackIndex - 1 + tracks.length) % tracks.length); playTrack(); }
+
+        function updateProgress(e) {
+            const { duration, currentTime } = e.srcElement;
+            if(duration) {
+                progressBar.style.width = `${(currentTime / duration) * 100}%`;
+                currentTimeEl.textContent = formatTime(currentTime);
+                totalTimeEl.textContent = formatTime(duration);
+            }
+        }
+
+        function setProgress(e) {
+            const width = this.clientWidth;
+            const clickX = e.offsetX;
+            const duration = audioPlayer.duration;
+            if(duration) audioPlayer.currentTime = (clickX / width) * duration;
+        }
+
+        function updatePlayIcon() {
+            playPauseBtn.innerHTML = audioPlayer.paused ? '<i class="fas fa-play"></i>' : '<i class="fas fa-pause"></i>';
+        }
+        
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
+            return isNaN(min) ? '0:00' : `${min}:${sec}`;
+        }
+
+        // Hadisələri dinləyicilərə bağlamaq
+        playPauseBtn.addEventListener('click', () => { audioPlayer.paused ? playTrack() : pauseTrack(); });
+        nextBtn.addEventListener('click', nextTrack);
+        prevBtn.addEventListener('click', prevTrack);
+        audioPlayer.addEventListener('timeupdate', updateProgress);
+        progressContainer.addEventListener('click', setProgress);
+        audioPlayer.addEventListener('play', updatePlayIcon);
+        audioPlayer.addEventListener('pause', updatePlayIcon);
+        audioPlayer.addEventListener('ended', nextTrack);
+
+        // Siyahını yaratmaq
+        trackList.innerHTML = tracks.map((track, index) => `
+            <li id="track-${index}">
+                <img src="${track.image || 'https://via.placeholder.com/40'}" alt="${track.title}">
+                <div class="track-info">
+                    <div class="title">${track.title}</div>
+                    <div class="artist">${track.description}</div>
+                </div>
+            </li>
+        `).join('');
+
+        // Siyahıdakı elementlərə klikləmə funksiyası
+        document.querySelectorAll('#track-list li').forEach((li, index) => {
+            li.addEventListener('click', () => {
+                loadTrack(index);
+                playTrack();
+            });
+        });
+
+        // Başlanğıc treki yüklə
+        if (tracks.length > 0) {
+            loadTrack(0);
+        }
+    </script>
+</body>
+</html>
